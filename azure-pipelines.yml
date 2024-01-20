@@ -1,0 +1,48 @@
+pr:
+  autoCancel: 'true'
+  drafts: 'true'
+  branches:
+    include:
+    - '*'
+trigger:
+  batch: 'true'
+  branches:
+    include:
+    - main
+    - releases
+    - release/*
+stages:
+- stage: build
+  displayName: 'Build and Test Code'
+  condition: ne(variables['SkipBuild'], true)
+  jobs:
+  - template: tools/templates/ci.yml
+  - template: tools/templates/sdl.yml
+  - template: tools/templates/cc.yml
+- stage: pack
+  displayName: 'Package and Sign Nuget'
+  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+  dependsOn:
+  - build
+  jobs:
+  - template: tools/templates/nuget.yml
+    parameters:
+      sign: ${{ startsWith(variables['Build.SourceBranch'], 'refs/heads/TODO') }}
+- stage: images
+  displayName: 'Build Images'
+  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+  dependsOn:
+  - build
+  jobs:
+  - template: tools/templates/acrbuild.yml
+- stage: e2e_tests
+  displayName: 'Triggering E2E tests'
+  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+  dependsOn:
+  - build
+  - pack
+  - images
+  jobs:
+  - template: tools/templates/e2e_tests.yml
+    parameters:
+      branchName: ${{ replace(variables['Build.SourceBranch'], 'refs/heads/', '') }}

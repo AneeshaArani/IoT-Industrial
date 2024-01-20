@@ -1,0 +1,15 @@
+﻿[
+    {
+        "EndpointUrl": "{{EndpointUrl}}",
+        "UseSecurity": true,
+        "OpcNodes": [
+            {
+                "Id": "ns=23;i=1259",
+                "OpcSamplingInterval": 500,
+                "FetchDisplayName": true,
+                "RegisterNode": true,
+                "UseCyclicRead": true
+            }
+        ]
+    }
+]

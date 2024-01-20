@@ -1,0 +1,19 @@
+﻿[
+    {
+        "EndpointUrl": "{{EndpointUrl}}",
+        "DataSetPublishingInterval": 10,
+        "UseSecurity": true,
+        "OpcNodes": [
+            {
+                "Id": "ns=23;i=1259",
+                "OpcSamplingInterval": 10,
+                "QueueSize": 10
+            },
+            {
+                "Id": "i=2258",
+                "OpcSamplingInterval": 10,
+                "QueueSize": 10
+            }
+        ]
+    }
+]

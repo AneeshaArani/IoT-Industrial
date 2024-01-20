@@ -1,0 +1,57 @@
+version: "3.9"
+services:
+  ############################
+  # OPC Publisher
+  ############################
+  publisher:
+    environment:
+      MqttClientConnectionString: "HostName=mosquitto;Port=1883;UseTls=false;Protocol=v5"
+      TelemetryTopicTemplate: "{RootTopic}/{Site}/{DataSetWriterGroup}"
+      DataSetMetaDataTopicTemplate: "{TelemetryTopic}/{DataSetWriterName}/metadata"
+      PublisherId: Microsoft
+      SiteId: Munich
+    depends_on:
+      - mosquitto
+  ############################
+  # Mosquitto
+  ############################
+  mosquitto:
+    container_name: mosquitto
+    image: "eclipse-mosquitto:latest"
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - mosquitto:/mosquitto/data
+      - "./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf"
+  ############################
+  # MQTT explorer
+  ############################
+  mqtt-explorer:
+    container_name: mqtt-explorer
+    image: "smeagolworms4/mqtt-explorer:latest"
+    ports:
+      - "4000:4000"
+    volumes:
+      - "./mosquitto/settings.json:/mqtt-explorer/config/settings.json"
+    depends_on:
+      - mosquitto
+  ############################
+  # UA Cloud dashboard
+  ############################
+  dashboard:
+    container_name: dashboard
+    image: "ghcr.io/opcfoundation/ua-clouddashboard:main"
+    ports:
+      - "8000:80"
+    environment:
+      IGNORE_MISSING_METADATA: 1
+      USE_MQTT: 1
+      CLIENT_NAME: "dashboard"
+      BROKER_NAME: "mosquitto"
+      BROKER_PORT: "1883"
+      TOPIC: Microsoft/factory1/#
+    depends_on:
+      - mosquitto
+volumes:
+  mosquitto:

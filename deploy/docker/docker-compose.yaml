@@ -1,0 +1,54 @@
+version: "3.9"
+services:
+  ############################
+  # OPC PLC Simulation
+  ############################
+  opcplc:
+    container_name: opcplc
+    image: mcr.microsoft.com/iotedge/opc-plc:${OPC_PLC_TAG:-latest}
+    ports:
+      - "50000:50000"
+    command: [
+      "--sph=True",
+      "--spf=/shared/pn.json",
+      "--pn=50000",
+      "--alm=True",
+      "--ses=True",
+      "--ei=${EVENT_NODES:-100}",
+      "--gn=${GUID_NODES:-100}",
+      "--fn=${FAST_NODES:-99900}",
+      "--sn=${SLOW_NODES:-99900}",
+      "--aa=True"
+      ]
+    volumes:
+      - shared:/shared:rw
+  ############################
+  # OPC Publisher
+  ############################
+  publisher:
+    container_name: publisher
+    image: mcr.microsoft.com/iotedge/opc-publisher:${OPC_PUBLISHER_TAG:-2.9}
+    user: root
+    ports:
+      - "9071:80"
+      - "9072:443"
+    command: [
+      "-c",
+      "--aa",
+      "--bs=1",
+      "--bi=0",
+      "--di=60",
+      "--cl=5",
+      "--rs",
+      "--dm=True",
+      "--lfm=syslog",
+      "--pki=/shared/pki",
+      "--pf=/shared/pn.json",
+      "--npd=${NODES_PER_DATASET:-10000}"
+      ]
+    environment:
+      EdgeHubConnectionString:
+    volumes:
+      - shared:/shared:rw
+volumes:
+  shared:

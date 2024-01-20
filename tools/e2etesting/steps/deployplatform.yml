@@ -1,0 +1,114 @@
+steps:
+- task: UseDotNet@2
+  displayName: 'Install .NET Core SDK for building'
+  inputs:
+    packageType: sdk
+    version: 8.0.x
+    includePreviewVersions: false
+    installationPath: $(Agent.ToolsDirectory)/dotnet
+
+- task: AzureCLI@2
+  displayName: 'Set Service Principal Environment Variables'
+  name: promoteserviceprincipal
+  inputs:
+    azureSubscription: '$(AzureSubscription)'
+    azurePowerShellVersion: 'latestVersion'
+    scriptLocation: 'InlineScript'
+    scriptType: 'ps'
+    addSpnToEnvironment: true
+    inlineScript: |
+      Write-Host "##vso[task.setvariable variable=ServicePrincipalId]$($env:servicePrincipalId)"
+      Write-Host "##vso[task.setvariable variable=ServicePrincipalKey]$($env:servicePrincipalKey)"
+
+- task: PowerShell@2
+  displayName: Versioning
+  name: setVersionInfo
+  inputs:
+    targetType: filePath
+    filePath: $(BasePath)\..\scripts\set-version.ps1
+
+- task: AzurePowerShell@5
+  displayName: 'Auto-Set Variables'
+  inputs:
+    azureSubscription: '$(AzureSubscription)'
+    azurePowerShellVersion: 'latestVersion'
+    scriptType: filePath
+    scriptPath: '$(BasePath)\SetVariables.ps1'
+    scriptArguments: >
+      -BranchName "$(BranchName)"
+      -Region "$(Region)"
+      -ImageTag "$(PlatformVersion)"
+      -ImageNamespace "$(ImageNamespace)"
+      -ContainerRegistryServer "$(ContainerRegistryServer)"
+
+- task: AzurePowerShell@5
+  displayName: "Run deployment script"
+  inputs:
+    azureSubscription: '$(AzureSubscription)'
+    azurePowerShellVersion: 'latestVersion'
+    scriptType: 'InlineScript'
+    Inline: |
+      $secureContainerRegistryPassword = "$(ContainerRegistryPassword)" `
+        | ConvertTo-SecureString -AsPlainText -Force
+      $secureServicePrincipalSecret = "$(ServicePrincipalKey)" `
+        | ConvertTo-SecureString -AsPlainText -Force
+      $credentials = New-Object -TypeName System.Management.Automation.PSCredential `
+        -ArgumentList "$(ServicePrincipalId)", $secureServicePrincipalSecret
+      Write-Host "Deploying to '$(ResourceGroupName)'..."
+      . $(System.DefaultWorkingDirectory)/deploy/scripts/deploy.ps1 `
+          -type services `
+          -version "$(PlatformVersion)" `
+          -applicationName "$(ApplicationName)" `
+          -resourceGroupName "$(ResourceGroupName)" `
+          -resourceGroupLocation "$(Region)" `
+          -imageNamespace "$(ImageNamespace)" `
+          -containerRegistryServer "$(ContainerRegistryServer)" `
+          -containerRegistryUsername "$(ContainerRegistryUsername)" `
+          -containerRegistryPassword $secureContainerRegistryPassword `
+          -credentials $credentials `
+          -context $(Get-AzContext)
+      Write-Host "Finished deployment to '$(ResourceGroupName)'."
+
+- task: AzurePowerShell@5
+  displayName: "Add permissions to KeyVault"
+  name: keyvaultpermissions
+  inputs:
+    azureSubscription: '$(AzureSubscription)'
+    azurePowerShellVersion: 'latestVersion'
+    scriptType: filePath
+    scriptPath: '$(BasePath)\SetKeyVaultPermissions.ps1'
+    scriptArguments: >
+      -ResourceGroupName "$(ResourceGroupName)"
+      -ServicePrincipalName "$(ServicePrincipalId)"
+- task: AzurePowerShell@5
+  displayName: 'Set KeyVaultName-Variable'
+  inputs:
+    azureSubscription: '$(AzureSubscription)'
+    azurePowerShellVersion: 'latestVersion'
+    scriptType: filePath
+    scriptPath: '$(BasePath)\DetermineKeyVaultName.ps1'
+    scriptArguments: >
+      -ResourceGroupName '$(ResourceGroupName)'
+- task: AzureKeyVault@1
+  displayName: 'Retrieve App identifier'
+  inputs:
+    azureSubscription: '$(AzureSubscription)'
+    KeyVaultName: '$(KeyVaultName)'
+    SecretsFilter: 'PCS-AUTH-CLIENT-APPID,PCS-AUTH-TENANT'
+- task: AzureKeyVault@1
+  displayName: 'Retrieve Admin credentials'
+  inputs:
+    azureSubscription: '$(AzureSubscription)'
+    KeyVaultName: 'e2etestingsecrets'
+    SecretsFilter: 'User,Password'
+- task: AzureCLI@2
+  displayName: 'Grant admin access to App'
+  inputs:
+    azureSubscription: '$(AzureSubscription)'
+    scriptLocation: 'InlineScript'
+    scriptType: 'bash'
+    addSpnToEnvironment: true
+    inlineScript: |
+      az login -t $(pcs-auth-tenant) --allow-no-subscriptions -u $(User) -p "$(Password)"
+      az ad app permission admin-consent --id $(pcs-auth-client-appid)
+
